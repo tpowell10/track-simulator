@@ -47,23 +47,34 @@ groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 world.addBody(groundBody);
 
 // Track creation
-const trackWidth = 20;
-const trackHeightOffset = 0.1; // Slight height above ground
-const innerTrackRadius = 40;
+const trackWidth = 40;
+const trackHeightOffset = 0.1;
+const innerTrackRadius = 80;
 const trackPoints = [];
 const innerTrackPoints = [];
 const outerTrackPoints = [];
 
-// Create a more complex track path
+// Create a more realistic racing track path
 for (let i = 0; i <= 360; i += 5) {
     const angle = (i * Math.PI) / 180;
-    // More interesting track with varying radius
-    const radius = innerTrackRadius + 15 * Math.sin(angle * 3) + 10 * Math.cos(angle * 2);
+
+    // Create a more realistic track with straights and curves
+    let radius;
+    if (angle < 0.5 || angle > 5.8) { // Long straight section
+        radius = innerTrackRadius + 40;
+    } else if (angle > 1.5 && angle < 2.5) { // Tight hairpin
+        radius = innerTrackRadius + 20;
+    } else if (angle > 3.5 && angle < 4.5) { // S-curve
+        radius = innerTrackRadius + 30;
+    } else { // Gentle curves
+        radius = innerTrackRadius + 25;
+    }
+
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
     trackPoints.push(new THREE.Vector3(x, trackHeightOffset, z));
 
-    // Create inner and outer track borders
+    // Create inner and outer track borders with proper alignment
     const nextAngle = ((i + 5) * Math.PI) / 180;
     const nextX = Math.cos(nextAngle) * radius;
     const nextZ = Math.sin(nextAngle) * radius;
@@ -110,10 +121,19 @@ const extrudeSettings = {
 };
 
 const trackGeometry = new THREE.ExtrudeGeometry(trackShape, extrudeSettings);
+
+// Create asphalt texture
+const textureLoader = new THREE.TextureLoader();
+const asphaltTexture = textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg');
+asphaltTexture.wrapS = THREE.RepeatWrapping;
+asphaltTexture.wrapT = THREE.RepeatWrapping;
+asphaltTexture.repeat.set(0.1, 0.1);
+
 const trackMaterial = new THREE.MeshStandardMaterial({
-    color: 0x555555, // Dark gray asphalt
+    color: 0x555555,
     roughness: 0.7,
-    metalness: 0.1
+    metalness: 0.1,
+    map: asphaltTexture
 });
 
 const trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
@@ -121,20 +141,23 @@ trackMesh.rotation.x = -Math.PI / 2;
 trackMesh.receiveShadow = true;
 scene.add(trackMesh);
 
-// Track borders (white lines)
-const innerTrackLine = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(innerTrackPoints),
-    new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 3 })
-);
-innerTrackLine.position.y = trackHeightOffset + 0.01;
-scene.add(innerTrackLine);
+// Create track border
+const borderGeometry = new THREE.ExtrudeGeometry(trackShape, {
+    steps: 1,
+    depth: trackHeightOffset + 0.01,
+    bevelEnabled: false
+});
 
-const outerTrackLine = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(outerTrackPoints),
-    new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 3 })
-);
-outerTrackLine.position.y = trackHeightOffset + 0.01;
-scene.add(outerTrackLine);
+const borderMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.7,
+    metalness: 0.1
+});
+
+const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
+borderMesh.rotation.x = -Math.PI / 2;
+borderMesh.receiveShadow = true;
+scene.add(borderMesh);
 
 // Create cones along the track
 const cones = [];
@@ -268,25 +291,29 @@ wheelPositions.forEach(pos => {
 });
 
 // Car movement variables
-const maxForwardSpeed = 25;
-const maxReverseSpeed = 15;
-const acceleration = 0.1; // Reduced acceleration 
-const deceleration = 0.97; // Smoother deceleration
-const turnSpeed = 0.03; // Reduced turn speed
+const maxForwardSpeed = 8;
+const maxReverseSpeed = 5;
+const acceleration = 0.05;
+const deceleration = 0.98;
+const turnSpeed = 0.03; // Increased from 0.02 for tighter turning
 let speed = 0;
 let angle = 0;
 
 // Camera setup
-camera.position.set(0, 15, -30);
+camera.position.set(0, 20, -40);
 camera.lookAt(carBody.position);
 
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.minDistance = 10;
-controls.maxDistance = 100;
-controls.minPolarAngle = 0.1; // Prevent going under the ground
+controls.minDistance = 30;
+controls.maxDistance = 50;
+controls.minPolarAngle = 0.3;
+controls.maxPolarAngle = 0.7;
+controls.target.set(0, 0, 0);
+controls.enablePan = false;
+controls.enableZoom = false;
 
 // Input handling
 const input = {
@@ -320,21 +347,21 @@ function animate() {
 
     // Simple car movement without complex physics
     if (input.forward) {
-        speed = Math.min(speed + acceleration, maxForwardSpeed);
+        speed = Math.max(speed - acceleration, -maxForwardSpeed);
     } else if (input.backward) {
-        speed = Math.max(speed - acceleration, -maxReverseSpeed);
+        speed = Math.min(speed + acceleration, maxReverseSpeed);
     } else {
         speed *= deceleration;
         if (Math.abs(speed) < 0.1) speed = 0;
     }
 
-    // Turn the car
+    // Turn the car (fixed left/right direction)
     if (Math.abs(speed) > 0.1) {
         if (input.left) {
-            angle += turnSpeed * Math.sign(speed);
+            angle -= turnSpeed * Math.sign(speed); // Reversed direction
         }
         if (input.right) {
-            angle -= turnSpeed * Math.sign(speed);
+            angle += turnSpeed * Math.sign(speed); // Reversed direction
         }
     }
 
@@ -374,9 +401,14 @@ function animate() {
         }
     });
 
-    // Update camera
-    controls.target.copy(carBody.position);
-    controls.update();
+    // Update camera to follow car
+    const cameraOffset = new THREE.Vector3(
+        Math.sin(angle) * 40,
+        20,
+        Math.cos(angle) * 40
+    );
+    camera.position.copy(carBody.position).add(cameraOffset);
+    camera.lookAt(carBody.position);
 
     renderer.render(scene, camera);
 }
