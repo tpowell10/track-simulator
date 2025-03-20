@@ -1,15 +1,22 @@
 export const GAME_CONFIG = {
     // Track settings
     TRACK: {
-        WIDTH: 40,
+        WIDTH: 60,
         HEIGHT_OFFSET: 0.1,
-        INNER_RADIUS: 80,
+        INNER_RADIUS: 120,
         SECTIONS: {
-            STRAIGHT: { RADIUS_OFFSET: 40 },
-            HAIRPIN: { RADIUS_OFFSET: 20 },
-            S_CURVE: { RADIUS_OFFSET: 30 },
-            GENTLE: { RADIUS_OFFSET: 25 }
-        }
+            STRAIGHT: { RADIUS_OFFSET: 60 },
+            HAIRPIN: { RADIUS_OFFSET: 30 },
+            S_CURVE: { RADIUS_OFFSET: 45 },
+            GENTLE: { RADIUS_OFFSET: 40 },
+            CHICANE: { RADIUS_OFFSET: 35 }
+        },
+        BARRIER_HEIGHT: 2,
+        BARRIER_THICKNESS: 0.5,
+        CONE_SPACING: 15,
+        INITIAL_SCORE: 1000,
+        SCORE_DECAY_RATE: 0.5, // Points per second
+        CONE_PENALTY: 50
     },
 
     // Car settings
