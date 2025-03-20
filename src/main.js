@@ -113,8 +113,122 @@ document.addEventListener('keyup', (event) => {
     }
 });
 
+// Game state
+let gameState = 'menu'; // menu, countdown, playing, finished
+let countdown = 3;
+let score = GAME_CONFIG.TRACK.INITIAL_SCORE;
+let gameStartTime = 0;
+let gameEndTime = 0;
+
+// Create UI elements
+const menuElement = document.createElement('div');
+menuElement.style.position = 'absolute';
+menuElement.style.top = '50%';
+menuElement.style.left = '50%';
+menuElement.style.transform = 'translate(-50%, -50%)';
+menuElement.style.color = 'white';
+menuElement.style.fontSize = '32px';
+menuElement.style.fontFamily = 'Arial, sans-serif';
+menuElement.style.textAlign = 'center';
+menuElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+menuElement.innerHTML = `
+    <div style="margin-bottom: 20px;">Racing Game</div>
+    <button id="startButton" style="
+        padding: 10px 20px;
+        font-size: 24px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    ">Start Game</button>
+`;
+document.body.appendChild(menuElement);
+
+const countdownElement = document.createElement('div');
+countdownElement.style.position = 'absolute';
+countdownElement.style.top = '50%';
+countdownElement.style.left = '50%';
+countdownElement.style.transform = 'translate(-50%, -50%)';
+countdownElement.style.color = 'white';
+countdownElement.style.fontSize = '72px';
+countdownElement.style.fontFamily = 'Arial, sans-serif';
+countdownElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+countdownElement.style.display = 'none';
+document.body.appendChild(countdownElement);
+
+const scoreElement = document.createElement('div');
+scoreElement.style.position = 'absolute';
+scoreElement.style.top = '20px';
+scoreElement.style.right = '20px';
+scoreElement.style.color = 'white';
+scoreElement.style.fontSize = '24px';
+scoreElement.style.fontFamily = 'Arial, sans-serif';
+scoreElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+scoreElement.style.display = 'none';
+document.body.appendChild(scoreElement);
+
+const gameOverElement = document.createElement('div');
+gameOverElement.style.position = 'absolute';
+gameOverElement.style.top = '50%';
+gameOverElement.style.left = '50%';
+gameOverElement.style.transform = 'translate(-50%, -50%)';
+gameOverElement.style.color = 'white';
+gameOverElement.style.fontSize = '32px';
+gameOverElement.style.fontFamily = 'Arial, sans-serif';
+gameOverElement.style.textAlign = 'center';
+gameOverElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+gameOverElement.style.display = 'none';
+document.body.appendChild(gameOverElement);
+
+// Event listeners
+document.getElementById('startButton').addEventListener('click', startGame);
+
+function startGame() {
+    gameState = 'countdown';
+    menuElement.style.display = 'none';
+    countdownElement.style.display = 'block';
+    countdown = 3;
+    score = GAME_CONFIG.TRACK.INITIAL_SCORE;
+
+    // Reset car position to start line
+    const startPos = track.getStartPosition();
+    car.carBodyBody.position.copy(startPos.position);
+    car.carBodyBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), startPos.angle);
+    car.group.position.copy(startPos.position);
+    car.group.quaternion.copy(car.carBodyBody.quaternion);
+    car.angle = startPos.angle;
+    car.speed = 0;
+
+    startCountdown();
+}
+
+function startCountdown() {
+    if (countdown > 0) {
+        countdownElement.textContent = countdown;
+        countdown--;
+        setTimeout(startCountdown, 1000);
+    } else {
+        gameState = 'playing';
+        countdownElement.style.display = 'none';
+        scoreElement.style.display = 'block';
+        gameStartTime = time;
+        // Enable car controls
+        input.forward = false;
+        input.backward = false;
+        input.left = false;
+        input.right = false;
+    }
+}
+
 // Initialize game
-let time = 0; // Add time variable for animation
+let time = 0;
+let lapStarted = false;
+let lapCompleted = false;
+let startLineCrossed = false;
+let lastConeHit = 0;
+let cones = [];
 
 async function init() {
     try {
@@ -128,12 +242,15 @@ async function init() {
         clouds.forEach(cloud => scene.add(cloud));
 
         // Create track and ground
-        const { trackMesh, borderMesh } = track.createTrack();
+        const { trackMesh, borderMesh, barriers, startLine, finishLine, startPosition } = track.createTrack();
         const groundResult = ground.createGround();
 
         // Add meshes to scene
         scene.add(trackMesh);
         scene.add(borderMesh);
+        barriers.forEach(barrier => scene.add(barrier));
+        scene.add(startLine);
+        scene.add(finishLine);
         scene.add(groundResult.mesh);
 
         // Add ground physics body to world
@@ -143,8 +260,14 @@ async function init() {
         car.addToScene(scene);
         car.addToWorld(world);
 
+        // Position car at start line
+        car.carBodyBody.position.copy(startPosition.position);
+        car.carBodyBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), startPosition.angle);
+        car.group.position.copy(startPosition.position);
+        car.group.quaternion.copy(car.carBodyBody.quaternion);
+        car.angle = startPosition.angle;
+
         // Create cones with enhanced materials
-        const cones = [];
         const coneGeometry = new THREE.ConeGeometry(0.5, 2, 32);
         const coneMaterial = new THREE.MeshPhysicalMaterial({
             color: 0xff0000,
@@ -156,8 +279,9 @@ async function init() {
         });
         const coneShape = new CANNON.Sphere(0.5);
 
+        // Place cones along the track
         track.trackPoints.forEach((point, index) => {
-            if (index % 20 === 0) {
+            if (index % GAME_CONFIG.TRACK.CONE_SPACING === 0) {
                 const cone = new THREE.Mesh(coneGeometry, coneMaterial);
                 cone.position.copy(point);
                 cone.position.y += 1;
@@ -183,8 +307,10 @@ async function init() {
             // Update environment
             environment.update(time);
 
-            // Update car
-            car.update(input);
+            // Update car only if game is playing
+            if (gameState === 'playing') {
+                car.update(input);
+            }
 
             // Update physics world
             world.step(GAME_CONFIG.PHYSICS.FIXED_TIME_STEP);
@@ -196,18 +322,59 @@ async function init() {
             });
 
             // Check for collisions with cones
-            const carPosition = new THREE.Vector3(car.carBodyBody.position.x, car.carBodyBody.position.y, car.carBodyBody.position.z);
-            cones.forEach(cone => {
-                const conePosition = new THREE.Vector3(cone.body.position.x, cone.body.position.y, cone.body.position.z);
-                const distance = carPosition.distanceTo(conePosition);
-                if (distance < 3) {
-                    const direction = conePosition.clone().sub(carPosition).normalize();
-                    cone.body.applyImpulse(
-                        new CANNON.Vec3(direction.x * car.speed * 10, 5, direction.z * car.speed * 10),
-                        new CANNON.Vec3(0, 0, 0)
-                    );
+            if (gameState === 'playing') {
+                const carPosition = new THREE.Vector3(car.carBodyBody.position.x, car.carBodyBody.position.y, car.carBodyBody.position.z);
+                const currentTime = time;
+
+                cones.forEach(cone => {
+                    const conePosition = new THREE.Vector3(cone.body.position.x, cone.body.position.y, cone.body.position.z);
+                    const distance = carPosition.distanceTo(conePosition);
+                    if (distance < 3 && currentTime - lastConeHit > 1) {
+                        const direction = conePosition.clone().sub(carPosition).normalize();
+                        cone.body.applyImpulse(
+                            new CANNON.Vec3(direction.x * car.speed * 10, 5, direction.z * car.speed * 10),
+                            new CANNON.Vec3(0, 0, 0)
+                        );
+                        lastConeHit = currentTime;
+                        score = Math.max(0, score - GAME_CONFIG.TRACK.CONE_PENALTY);
+                    }
+                });
+
+                // Check for finish line
+                const finishLinePosition = new THREE.Vector3(finishLine.position.x, finishLine.position.y, finishLine.position.z);
+                const distanceToFinish = carPosition.distanceTo(finishLinePosition);
+                if (distanceToFinish < 5) {
+                    gameState = 'finished';
+                    gameEndTime = time;
+                    scoreElement.style.display = 'none';
+                    gameOverElement.innerHTML = `
+                        <div style="margin-bottom: 20px;">Game Over!</div>
+                        <div style="font-size: 24px;">Final Score: ${Math.round(score)}</div>
+                        <div style="font-size: 24px;">Time: ${((gameEndTime - gameStartTime) / 1000).toFixed(2)}s</div>
+                        <button id="restartButton" style="
+                            margin-top: 20px;
+                            padding: 10px 20px;
+                            font-size: 24px;
+                            background-color: #4CAF50;
+                            color: white;
+                            border: none;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            transition: background-color 0.3s;
+                        ">Play Again</button>
+                    `;
+                    gameOverElement.style.display = 'block';
+                    document.getElementById('restartButton').addEventListener('click', () => {
+                        gameOverElement.style.display = 'none';
+                        menuElement.style.display = 'block';
+                        gameState = 'menu';
+                    });
                 }
-            });
+
+                // Update score based on time
+                score = Math.max(0, score - GAME_CONFIG.TRACK.SCORE_DECAY_RATE * 0.016);
+                scoreElement.textContent = `Score: ${Math.round(score)}`;
+            }
 
             // Update camera to follow car
             const cameraOffset = new THREE.Vector3(
