@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GAME_CONFIG } from './config.js';
+import { TextureManager } from './textures.js';
+import { Track } from './track.js';
+import { Ground } from './ground.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -9,299 +13,39 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// Physics world setup
+const world = new CANNON.World({
+    gravity: new CANNON.Vec3(0, GAME_CONFIG.PHYSICS.GRAVITY, 0)
+});
+
+// Initialize managers
+const textureManager = new TextureManager();
+const track = new Track(textureManager);
+const ground = new Ground(textureManager);
+
+// Lighting setup
+const ambientLight = new THREE.AmbientLight(0xffffff, GAME_CONFIG.LIGHTING.AMBIENT_INTENSITY);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(10, 20, 10);
+const directionalLight = new THREE.DirectionalLight(0xffffff, GAME_CONFIG.LIGHTING.DIRECTIONAL_INTENSITY);
+directionalLight.position.set(5, 5, 5);
 directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.mapSize.width = GAME_CONFIG.LIGHTING.SHADOW_MAP_SIZE;
+directionalLight.shadow.mapSize.height = GAME_CONFIG.LIGHTING.SHADOW_MAP_SIZE;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 500;
+directionalLight.shadow.camera.left = -100;
+directionalLight.shadow.camera.right = 100;
+directionalLight.shadow.camera.top = 100;
+directionalLight.shadow.camera.bottom = -100;
 scene.add(directionalLight);
 
-// Physics world
-const world = new CANNON.World({
-    gravity: new CANNON.Vec3(0, -9.82, 0)
-});
-
-// Ground (grass)
-const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
-const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x1a7b1e, // Brighter grass green
-    roughness: 0.8,
-    metalness: 0.2
-});
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-const groundBody = new CANNON.Body({
-    type: CANNON.Body.STATIC,
-    shape: new CANNON.Plane()
-});
-groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-world.addBody(groundBody);
-
-// Track creation
-const trackWidth = 40;
-const trackHeightOffset = 0.1;
-const innerTrackRadius = 80;
-const trackPoints = [];
-const innerTrackPoints = [];
-const outerTrackPoints = [];
-
-// Create a more realistic racing track path
-for (let i = 0; i <= 360; i += 5) {
-    const angle = (i * Math.PI) / 180;
-
-    // Create a more realistic track with straights and curves
-    let radius;
-    if (angle < 0.5 || angle > 5.8) { // Long straight section
-        radius = innerTrackRadius + 40;
-    } else if (angle > 1.5 && angle < 2.5) { // Tight hairpin
-        radius = innerTrackRadius + 20;
-    } else if (angle > 3.5 && angle < 4.5) { // S-curve
-        radius = innerTrackRadius + 30;
-    } else { // Gentle curves
-        radius = innerTrackRadius + 25;
-    }
-
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    trackPoints.push(new THREE.Vector3(x, trackHeightOffset, z));
-
-    // Create inner and outer track borders with proper alignment
-    const nextAngle = ((i + 5) * Math.PI) / 180;
-    const nextX = Math.cos(nextAngle) * radius;
-    const nextZ = Math.sin(nextAngle) * radius;
-
-    const direction = new THREE.Vector3(nextX - x, 0, nextZ - z).normalize();
-    const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x);
-
-    const innerPoint = new THREE.Vector3(
-        x - perpendicular.x * (trackWidth / 2),
-        trackHeightOffset,
-        z - perpendicular.z * (trackWidth / 2)
-    );
-
-    const outerPoint = new THREE.Vector3(
-        x + perpendicular.x * (trackWidth / 2),
-        trackHeightOffset,
-        z + perpendicular.z * (trackWidth / 2)
-    );
-
-    innerTrackPoints.push(innerPoint);
-    outerTrackPoints.push(outerPoint);
-}
-
-// Create track paved surface using shape and extrusion
-const trackShape = new THREE.Shape();
-trackShape.moveTo(outerTrackPoints[0].x, outerTrackPoints[0].z);
-
-// Add outer points
-for (let i = 1; i < outerTrackPoints.length; i++) {
-    trackShape.lineTo(outerTrackPoints[i].x, outerTrackPoints[i].z);
-}
-
-// Add inner points in reverse
-for (let i = innerTrackPoints.length - 1; i >= 0; i--) {
-    trackShape.lineTo(innerTrackPoints[i].x, innerTrackPoints[i].z);
-}
-
-trackShape.closePath();
-
-const extrudeSettings = {
-    steps: 1,
-    depth: trackHeightOffset,
-    bevelEnabled: false
-};
-
-const trackGeometry = new THREE.ExtrudeGeometry(trackShape, extrudeSettings);
-
-// Create asphalt texture
-const textureLoader = new THREE.TextureLoader();
-const asphaltTexture = textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg');
-asphaltTexture.wrapS = THREE.RepeatWrapping;
-asphaltTexture.wrapT = THREE.RepeatWrapping;
-asphaltTexture.repeat.set(0.1, 0.1);
-
-const trackMaterial = new THREE.MeshStandardMaterial({
-    color: 0x555555,
-    roughness: 0.7,
-    metalness: 0.1,
-    map: asphaltTexture
-});
-
-const trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
-trackMesh.rotation.x = -Math.PI / 2;
-trackMesh.receiveShadow = true;
-scene.add(trackMesh);
-
-// Create track border
-const borderGeometry = new THREE.ExtrudeGeometry(trackShape, {
-    steps: 1,
-    depth: trackHeightOffset + 0.01,
-    bevelEnabled: false
-});
-
-const borderMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
-    roughness: 0.7,
-    metalness: 0.1
-});
-
-const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
-borderMesh.rotation.x = -Math.PI / 2;
-borderMesh.receiveShadow = true;
-scene.add(borderMesh);
-
-// Create cones along the track
-const cones = [];
-const coneGeometry = new THREE.ConeGeometry(0.5, 1.5, 32);
-const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // Brighter orange
-const coneShape = new CANNON.Cylinder(0.5, 0.2, 1.5, 8);
-
-// Add cones along the track
-for (let i = 0; i < trackPoints.length; i += 10) {
-    const point = trackPoints[i];
-    const nextPoint = trackPoints[(i + 1) % trackPoints.length];
-    const direction = nextPoint.clone().sub(point).normalize();
-    const perpendicular = new THREE.Vector3(-direction.z, 0, direction.x);
-
-    // Add cones on both sides of the track
-    [-1, 1].forEach(side => {
-        // Place cones closer to the track edge
-        const coneOffset = side * (trackWidth / 2 - 1);
-        const conePosition = point.clone().add(perpendicular.multiplyScalar(coneOffset));
-
-        const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-        cone.position.copy(conePosition);
-        cone.position.y = 0.75; // Half height of cone
-        cone.castShadow = true;
-        scene.add(cone);
-
-        const coneBody = new CANNON.Body({
-            mass: 0.5, // Lighter cones are easier to knock over
-            material: new CANNON.Material()
-        });
-        coneBody.addShape(coneShape);
-        coneBody.position.copy(conePosition);
-        coneBody.position.y = 0.75;
-        world.addBody(coneBody);
-
-        cones.push({ mesh: cone, body: coneBody });
-    });
-}
-
-// Car body (Subaru WRX)
-const carBody = new THREE.Group();
-
-// Main body
-const mainBody = new THREE.Mesh(
-    new THREE.BoxGeometry(2.5, 0.8, 4.5),
-    new THREE.MeshStandardMaterial({ color: 0x808080 })
-);
-mainBody.position.y = 0.4;
-mainBody.castShadow = true;
-carBody.add(mainBody);
-
-// Hood
-const hood = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 0.1, 1.5),
-    new THREE.MeshStandardMaterial({ color: 0x808080 })
-);
-hood.position.set(0, 0.8, 1);
-hood.castShadow = true;
-carBody.add(hood);
-
-// Roof
-const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 0.1, 1.5),
-    new THREE.MeshStandardMaterial({ color: 0x808080 })
-);
-roof.position.set(0, 1.2, 0);
-roof.castShadow = true;
-carBody.add(roof);
-
-// Wheels
-const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 32);
-const wheelMaterial = new THREE.MeshStandardMaterial({
-    color: 0x333333,
-    roughness: 0.7,
-    metalness: 0.3
-});
-
-const wheelPositions = [
-    { x: -1.5, y: 0.4, z: -1.5 },
-    { x: 1.5, y: 0.4, z: -1.5 },
-    { x: -1.5, y: 0.4, z: 1.5 },
-    { x: 1.5, y: 0.4, z: 1.5 }
-];
-
-wheelPositions.forEach(pos => {
-    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-    wheel.position.set(pos.x, pos.y, pos.z);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.castShadow = true;
-    carBody.add(wheel);
-});
-
-scene.add(carBody);
-
-// Car physics
-const carBodyShape = new CANNON.Box(new CANNON.Vec3(1.25, 0.4, 2.25));
-const carBodyBody = new CANNON.Body({
-    mass: 1500,
-    material: new CANNON.Material()
-});
-carBodyBody.addShape(carBodyShape);
-carBodyBody.position.set(0, 1, 0);
-carBodyBody.angularDamping = 0.3;
-carBodyBody.linearDamping = 0.3;
-world.addBody(carBodyBody);
-
-// Wheels physics
-const wheelShape = new CANNON.Sphere(0.4);
-const wheelBodies = [];
-const wheelConstraints = [];
-
-wheelPositions.forEach(pos => {
-    const wheelBody = new CANNON.Body({
-        mass: 1,
-        material: new CANNON.Material()
-    });
-    wheelBody.addShape(wheelShape);
-    wheelBody.position.set(pos.x, pos.y + 1, pos.z);
-    wheelBody.angularDamping = 0.4;
-    world.addBody(wheelBody);
-
-    const constraint = new CANNON.HingeConstraint(carBodyBody, wheelBody, {
-        pivotA: new CANNON.Vec3(pos.x, pos.y, pos.z),
-        axisA: new CANNON.Vec3(0, 0, 1),
-        maxForce: 1e6
-    });
-    world.addConstraint(constraint);
-
-    wheelBodies.push(wheelBody);
-    wheelConstraints.push(constraint);
-});
-
-// Car movement variables
-const maxForwardSpeed = 8;
-const maxReverseSpeed = 5;
-const acceleration = 0.05;
-const deceleration = 0.98;
-const turnSpeed = 0.03; // Increased from 0.02 for tighter turning
-let speed = 0;
-let angle = 0;
-
 // Camera setup
-camera.position.set(0, 20, -40);
-camera.lookAt(carBody.position);
+camera.position.set(0, GAME_CONFIG.CAMERA.HEIGHT, -GAME_CONFIG.CAMERA.DISTANCE);
+camera.lookAt(0, 0, 0);
 
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -341,76 +85,194 @@ document.addEventListener('keyup', (event) => {
     }
 });
 
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
+// Car movement variables
+const { CAR } = GAME_CONFIG;
+let speed = 0;
+let angle = 0;
 
-    // Simple car movement without complex physics
-    if (input.forward) {
-        speed = Math.max(speed - acceleration, -maxForwardSpeed);
-    } else if (input.backward) {
-        speed = Math.min(speed + acceleration, maxReverseSpeed);
-    } else {
-        speed *= deceleration;
-        if (Math.abs(speed) < 0.1) speed = 0;
-    }
+// Initialize game
+async function init() {
+    try {
+        // Load textures
+        await textureManager.loadTextures();
 
-    // Turn the car (fixed left/right direction)
-    if (Math.abs(speed) > 0.1) {
-        if (input.left) {
-            angle -= turnSpeed * Math.sign(speed); // Reversed direction
-        }
-        if (input.right) {
-            angle += turnSpeed * Math.sign(speed); // Reversed direction
-        }
-    }
+        // Create track and ground
+        const { trackMesh, borderMesh } = track.createTrack();
+        const groundResult = ground.createGround();
 
-    // Calculate movement based on car direction
-    const xMovement = Math.sin(angle) * speed;
-    const zMovement = Math.cos(angle) * speed;
+        // Add meshes to scene
+        scene.add(trackMesh);
+        scene.add(borderMesh);
+        scene.add(groundResult.mesh);
 
-    // Update car position and rotation
-    carBodyBody.position.x += xMovement;
-    carBodyBody.position.z += zMovement;
-    carBodyBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
+        // Add ground physics body to world
+        world.addBody(groundResult.body);
 
-    carBody.position.copy(carBodyBody.position);
-    carBody.quaternion.copy(carBodyBody.quaternion);
+        // Create car
+        const carBodyGeometry = new THREE.BoxGeometry(2, 0.5, 4);
+        const carBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+        const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
+        carBody.castShadow = true;
+        carBody.receiveShadow = true;
+        scene.add(carBody);
 
-    // Update physics world
-    world.step(1 / 60);
+        // Create car physics body
+        const carBodyShape = new CANNON.Box(new CANNON.Vec3(1, 0.25, 2));
+        const carBodyBody = new CANNON.Body({ mass: CAR.MASS });
+        carBodyBody.addShape(carBodyShape);
+        carBodyBody.position.set(0, 0.5, 0);
+        world.addBody(carBodyBody);
 
-    // Update cones
-    cones.forEach(cone => {
-        cone.mesh.position.copy(cone.body.position);
-        cone.mesh.quaternion.copy(cone.body.quaternion);
-    });
+        // Create wheels
+        const wheelGeometry = new THREE.CylinderGeometry(CAR.WHEEL_RADIUS, CAR.WHEEL_RADIUS, CAR.WHEEL_WIDTH, 32);
+        const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        const wheels = [];
 
-    // Check for collisions with cones
-    const carPosition = new THREE.Vector3(carBodyBody.position.x, carBodyBody.position.y, carBodyBody.position.z);
-    cones.forEach(cone => {
-        const conePosition = new THREE.Vector3(cone.body.position.x, cone.body.position.y, cone.body.position.z);
-        const distance = carPosition.distanceTo(conePosition);
-        if (distance < 3) {
-            // Apply force to knock over the cone
-            const direction = conePosition.clone().sub(carPosition).normalize();
-            cone.body.applyImpulse(
-                new CANNON.Vec3(direction.x * speed * 10, 5, direction.z * speed * 10),
-                new CANNON.Vec3(0, 0, 0)
+        const wheelBodies = [];
+        const wheelConstraints = [];
+
+        const wheelPositions = [
+            { x: -1.2, y: 0.4, z: -1.2 },
+            { x: 1.2, y: 0.4, z: -1.2 },
+            { x: -1.2, y: 0.4, z: 1.2 },
+            { x: 1.2, y: 0.4, z: 1.2 }
+        ];
+
+        wheelPositions.forEach(position => {
+            const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            wheel.rotation.z = Math.PI / 2;
+            wheel.position.set(position.x, position.y, position.z);
+            wheel.castShadow = true;
+            wheel.receiveShadow = true;
+            carBody.add(wheel);
+            wheels.push(wheel);
+
+            const wheelBody = new CANNON.Body({ mass: CAR.WHEEL_MASS });
+            const wheelShape = new CANNON.Sphere(CAR.WHEEL_RADIUS);
+            wheelBody.addShape(wheelShape);
+            wheelBody.position.set(position.x, position.y, position.z);
+            world.addBody(wheelBody);
+            wheelBodies.push(wheelBody);
+
+            const constraint = new CANNON.HingeConstraint(carBodyBody, wheelBody, {
+                pivotA: new CANNON.Vec3(position.x, position.y, position.z),
+                axisA: new CANNON.Vec3(0, 0, 1),
+                maxForce: 1e6
+            });
+            world.addConstraint(constraint);
+            wheelConstraints.push(constraint);
+        });
+
+        // Create cones along the track
+        const cones = [];
+        const coneGeometry = new THREE.ConeGeometry(0.5, 2, 32);
+        const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const coneShape = new CANNON.Sphere(0.5);
+
+        track.trackPoints.forEach((point, index) => {
+            if (index % 20 === 0) {
+                const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+                cone.position.copy(point);
+                cone.position.y += 1;
+                cone.castShadow = true;
+                cone.receiveShadow = true;
+                scene.add(cone);
+
+                const coneBody = new CANNON.Body({ mass: 1 });
+                coneBody.addShape(coneShape);
+                coneBody.position.copy(point);
+                coneBody.position.y += 1;
+                world.addBody(coneBody);
+
+                cones.push({ mesh: cone, body: coneBody });
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Car movement
+            if (input.forward) {
+                speed = Math.max(speed - CAR.ACCELERATION, -CAR.MAX_FORWARD_SPEED);
+            } else if (input.backward) {
+                speed = Math.min(speed + CAR.ACCELERATION, CAR.MAX_REVERSE_SPEED);
+            } else {
+                speed *= CAR.DECELERATION;
+                if (Math.abs(speed) < 0.1) speed = 0;
+            }
+
+            // Turn the car
+            if (Math.abs(speed) > 0.1) {
+                if (input.left) {
+                    angle -= CAR.TURN_SPEED * Math.sign(speed);
+                }
+                if (input.right) {
+                    angle += CAR.TURN_SPEED * Math.sign(speed);
+                }
+            }
+
+            // Calculate movement based on car direction
+            const xMovement = Math.sin(angle) * speed;
+            const zMovement = Math.cos(angle) * speed;
+
+            // Update car position and rotation
+            carBodyBody.position.x += xMovement;
+            carBodyBody.position.z += zMovement;
+            carBodyBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
+
+            carBody.position.copy(carBodyBody.position);
+            carBody.quaternion.copy(carBodyBody.quaternion);
+
+            // Update physics world
+            world.step(GAME_CONFIG.PHYSICS.FIXED_TIME_STEP);
+
+            // Update cones
+            cones.forEach(cone => {
+                cone.mesh.position.copy(cone.body.position);
+                cone.mesh.quaternion.copy(cone.body.quaternion);
+            });
+
+            // Check for collisions with cones
+            const carPosition = new THREE.Vector3(carBodyBody.position.x, carBodyBody.position.y, carBodyBody.position.z);
+            cones.forEach(cone => {
+                const conePosition = new THREE.Vector3(cone.body.position.x, cone.body.position.y, cone.body.position.z);
+                const distance = carPosition.distanceTo(conePosition);
+                if (distance < 3) {
+                    const direction = conePosition.clone().sub(carPosition).normalize();
+                    cone.body.applyImpulse(
+                        new CANNON.Vec3(direction.x * speed * 10, 5, direction.z * speed * 10),
+                        new CANNON.Vec3(0, 0, 0)
+                    );
+                }
+            });
+
+            // Update camera to follow car
+            const cameraOffset = new THREE.Vector3(
+                Math.sin(angle) * GAME_CONFIG.CAMERA.DISTANCE,
+                GAME_CONFIG.CAMERA.HEIGHT,
+                Math.cos(angle) * GAME_CONFIG.CAMERA.DISTANCE
             );
+            camera.position.copy(carBody.position).add(cameraOffset);
+            camera.lookAt(carBody.position);
+
+            renderer.render(scene, camera);
         }
-    });
 
-    // Update camera to follow car
-    const cameraOffset = new THREE.Vector3(
-        Math.sin(angle) * 40,
-        20,
-        Math.cos(angle) * 40
-    );
-    camera.position.copy(carBody.position).add(cameraOffset);
-    camera.lookAt(carBody.position);
-
-    renderer.render(scene, camera);
+        animate();
+    } catch (error) {
+        console.error('Error initializing game:', error);
+        // Add a basic error message to the screen
+        const errorDiv = document.createElement('div');
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.top = '50%';
+        errorDiv.style.left = '50%';
+        errorDiv.style.transform = 'translate(-50%, -50%)';
+        errorDiv.style.color = 'red';
+        errorDiv.style.fontSize = '24px';
+        errorDiv.textContent = 'Error loading game. Please refresh the page.';
+        document.body.appendChild(errorDiv);
+    }
 }
 
 // Handle window resize
@@ -421,4 +283,4 @@ window.addEventListener('resize', () => {
 });
 
 // Start the game
-animate(); 
+init(); 
