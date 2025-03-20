@@ -126,22 +126,159 @@ async function init() {
         world.addBody(groundResult.body);
 
         // Create car with enhanced materials
+        const carGroup = new THREE.Group();
+        scene.add(carGroup);
+
+        // Main body
         const carBodyGeometry = new THREE.BoxGeometry(2, 0.5, 4);
         const carBodyMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0x808080,
-            roughness: 0.5,
+            color: 0xff0000,
+            roughness: 0.3,
             metalness: 0.8,
-            clearcoat: 0.5,
-            clearcoatRoughness: 0.3,
+            clearcoat: 0.8,
+            clearcoatRoughness: 0.2,
             envMapIntensity: 1.0
         });
         const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
         carBody.castShadow = true;
         carBody.receiveShadow = true;
-        scene.add(carBody);
+        carGroup.add(carBody);
+
+        // Hood
+        const hoodGeometry = new THREE.BoxGeometry(1.8, 0.1, 1.5);
+        const hood = new THREE.Mesh(hoodGeometry, carBodyMaterial);
+        hood.position.set(0, 0.3, 1.2);
+        hood.castShadow = true;
+        hood.receiveShadow = true;
+        carGroup.add(hood);
+
+        // Roof
+        const roofGeometry = new THREE.BoxGeometry(1.6, 0.8, 1.2);
+        const roof = new THREE.Mesh(roofGeometry, carBodyMaterial);
+        roof.position.set(0, 0.8, 0.2);
+        roof.castShadow = true;
+        roof.receiveShadow = true;
+        carGroup.add(roof);
+
+        // Windows
+        const windowMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0.7,
+            roughness: 0.1,
+            metalness: 0.9,
+            clearcoat: 0.9,
+            clearcoatRoughness: 0.1
+        });
+
+        // Front windshield
+        const frontWindshieldGeometry = new THREE.BoxGeometry(1.4, 0.6, 0.1);
+        const frontWindshield = new THREE.Mesh(frontWindshieldGeometry, windowMaterial);
+        frontWindshield.position.set(0, 0.6, 1.3);
+        frontWindshield.rotation.x = -Math.PI / 6;
+        frontWindshield.castShadow = true;
+        frontWindshield.receiveShadow = true;
+        carGroup.add(frontWindshield);
+
+        // Rear windshield
+        const rearWindshieldGeometry = new THREE.BoxGeometry(1.4, 0.6, 0.1);
+        const rearWindshield = new THREE.Mesh(rearWindshieldGeometry, windowMaterial);
+        rearWindshield.position.set(0, 0.6, -0.8);
+        rearWindshield.rotation.x = Math.PI / 6;
+        rearWindshield.castShadow = true;
+        rearWindshield.receiveShadow = true;
+        carGroup.add(rearWindshield);
+
+        // Side windows
+        const sideWindowGeometry = new THREE.BoxGeometry(0.1, 0.4, 0.8);
+        const leftWindow = new THREE.Mesh(sideWindowGeometry, windowMaterial);
+        leftWindow.position.set(-0.8, 0.8, 0);
+        leftWindow.castShadow = true;
+        leftWindow.receiveShadow = true;
+        carGroup.add(leftWindow);
+
+        const rightWindow = new THREE.Mesh(sideWindowGeometry, windowMaterial);
+        rightWindow.position.set(0.8, 0.8, 0);
+        rightWindow.castShadow = true;
+        rightWindow.receiveShadow = true;
+        carGroup.add(rightWindow);
+
+        // Front bumper
+        const frontBumperGeometry = new THREE.BoxGeometry(2.2, 0.3, 0.5);
+        const frontBumper = new THREE.Mesh(frontBumperGeometry, carBodyMaterial);
+        frontBumper.position.set(0, 0.1, 2.2);
+        frontBumper.castShadow = true;
+        frontBumper.receiveShadow = true;
+        carGroup.add(frontBumper);
+
+        // Rear bumper
+        const rearBumperGeometry = new THREE.BoxGeometry(2.2, 0.3, 0.5);
+        const rearBumper = new THREE.Mesh(rearBumperGeometry, carBodyMaterial);
+        rearBumper.position.set(0, 0.1, -2.2);
+        rearBumper.castShadow = true;
+        rearBumper.receiveShadow = true;
+        carGroup.add(rearBumper);
+
+        // Spoiler
+        const spoilerGeometry = new THREE.BoxGeometry(2, 0.3, 0.2);
+        const spoiler = new THREE.Mesh(spoilerGeometry, carBodyMaterial);
+        spoiler.position.set(0, 0.8, -2.1);
+        spoiler.castShadow = true;
+        spoiler.receiveShadow = true;
+        carGroup.add(spoiler);
+
+        // Headlights
+        const headlightMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            emissive: 0xffffff,
+            emissiveIntensity: 0.5,
+            roughness: 0.1,
+            metalness: 0.9,
+            clearcoat: 0.9,
+            clearcoatRoughness: 0.1
+        });
+
+        const headlightGeometry = new THREE.CircleGeometry(0.2, 16);
+        const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        leftHeadlight.position.set(-0.8, 0.2, 2.1);
+        leftHeadlight.rotation.y = Math.PI;
+        leftHeadlight.castShadow = true;
+        leftHeadlight.receiveShadow = true;
+        carGroup.add(leftHeadlight);
+
+        const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        rightHeadlight.position.set(0.8, 0.2, 2.1);
+        rightHeadlight.rotation.y = Math.PI;
+        rightHeadlight.castShadow = true;
+        rightHeadlight.receiveShadow = true;
+        carGroup.add(rightHeadlight);
+
+        // Taillights
+        const taillightMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xff0000,
+            emissive: 0xff0000,
+            emissiveIntensity: 0.5,
+            roughness: 0.1,
+            metalness: 0.9,
+            clearcoat: 0.9,
+            clearcoatRoughness: 0.1
+        });
+
+        const taillightGeometry = new THREE.CircleGeometry(0.2, 16);
+        const leftTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
+        leftTaillight.position.set(-0.8, 0.2, -2.1);
+        leftTaillight.castShadow = true;
+        leftTaillight.receiveShadow = true;
+        carGroup.add(leftTaillight);
+
+        const rightTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
+        rightTaillight.position.set(0.8, 0.2, -2.1);
+        rightTaillight.castShadow = true;
+        rightTaillight.receiveShadow = true;
+        carGroup.add(rightTaillight);
 
         // Create car physics body
-        const carBodyShape = new CANNON.Box(new CANNON.Vec3(1, 0.25, 2));
+        const carBodyShape = new CANNON.Box(new CANNON.Vec3(1, 0.5, 2));
         const carBodyBody = new CANNON.Body({ mass: CAR.MASS });
         carBodyBody.addShape(carBodyShape);
         carBodyBody.position.set(0, 0.5, 0);
@@ -175,7 +312,7 @@ async function init() {
             wheel.position.set(position.x, position.y, position.z);
             wheel.castShadow = true;
             wheel.receiveShadow = true;
-            carBody.add(wheel);
+            carGroup.add(wheel);
             wheels.push(wheel);
 
             const wheelBody = new CANNON.Body({ mass: CAR.WHEEL_MASS });
@@ -263,8 +400,8 @@ async function init() {
             carBodyBody.position.z += zMovement;
             carBodyBody.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
 
-            carBody.position.copy(carBodyBody.position);
-            carBody.quaternion.copy(carBodyBody.quaternion);
+            carGroup.position.copy(carBodyBody.position);
+            carGroup.quaternion.copy(carBodyBody.quaternion);
 
             // Update physics world
             world.step(GAME_CONFIG.PHYSICS.FIXED_TIME_STEP);
@@ -295,8 +432,8 @@ async function init() {
                 GAME_CONFIG.CAMERA.HEIGHT,
                 Math.cos(angle) * GAME_CONFIG.CAMERA.DISTANCE
             );
-            camera.position.copy(carBody.position).add(cameraOffset);
-            camera.lookAt(carBody.position);
+            camera.position.copy(carGroup.position).add(cameraOffset);
+            camera.lookAt(carGroup.position);
 
             renderer.render(scene, camera);
         }
