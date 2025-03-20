@@ -5,15 +5,20 @@ import { GAME_CONFIG } from './config.js';
 import { TextureManager } from './textures.js';
 import { Track } from './track.js';
 import { Ground } from './ground.js';
+import { Environment } from './environment.js';
 
 // Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87CEEB); // Sky blue background
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: "high-performance"
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
 // Physics world setup
@@ -25,6 +30,7 @@ const world = new CANNON.World({
 const textureManager = new TextureManager();
 const track = new Track(textureManager);
 const ground = new Ground(textureManager);
+const environment = new Environment();
 
 // Lighting setup
 const ambientLight = new THREE.AmbientLight(0xffffff, GAME_CONFIG.LIGHTING.AMBIENT_INTENSITY);
@@ -42,6 +48,10 @@ directionalLight.shadow.camera.right = 100;
 directionalLight.shadow.camera.top = 100;
 directionalLight.shadow.camera.bottom = -100;
 scene.add(directionalLight);
+
+// Add hemisphere light for better ambient lighting
+const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x3a7e3a, 0.5);
+scene.add(hemisphereLight);
 
 // Camera setup
 camera.position.set(0, GAME_CONFIG.CAMERA.HEIGHT, -GAME_CONFIG.CAMERA.DISTANCE);
@@ -89,12 +99,19 @@ document.addEventListener('keyup', (event) => {
 const { CAR } = GAME_CONFIG;
 let speed = 0;
 let angle = 0;
+let time = 0;
 
 // Initialize game
 async function init() {
     try {
         // Load textures
         await textureManager.loadTextures();
+
+        // Create environment
+        const { sky, sun, clouds } = environment.createEnvironment();
+        scene.add(sky);
+        scene.add(sun);
+        clouds.forEach(cloud => scene.add(cloud));
 
         // Create track and ground
         const { trackMesh, borderMesh } = track.createTrack();
@@ -108,9 +125,16 @@ async function init() {
         // Add ground physics body to world
         world.addBody(groundResult.body);
 
-        // Create car
+        // Create car with enhanced materials
         const carBodyGeometry = new THREE.BoxGeometry(2, 0.5, 4);
-        const carBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+        const carBodyMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x808080,
+            roughness: 0.5,
+            metalness: 0.8,
+            clearcoat: 0.5,
+            clearcoatRoughness: 0.3,
+            envMapIntensity: 1.0
+        });
         const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
         carBody.castShadow = true;
         carBody.receiveShadow = true;
@@ -123,9 +147,16 @@ async function init() {
         carBodyBody.position.set(0, 0.5, 0);
         world.addBody(carBodyBody);
 
-        // Create wheels
+        // Create wheels with enhanced materials
         const wheelGeometry = new THREE.CylinderGeometry(CAR.WHEEL_RADIUS, CAR.WHEEL_RADIUS, CAR.WHEEL_WIDTH, 32);
-        const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+        const wheelMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x000000,
+            roughness: 0.3,
+            metalness: 0.9,
+            clearcoat: 0.8,
+            clearcoatRoughness: 0.2,
+            envMapIntensity: 1.0
+        });
         const wheels = [];
 
         const wheelBodies = [];
@@ -163,10 +194,17 @@ async function init() {
             wheelConstraints.push(constraint);
         });
 
-        // Create cones along the track
+        // Create cones with enhanced materials
         const cones = [];
         const coneGeometry = new THREE.ConeGeometry(0.5, 2, 32);
-        const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const coneMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xff0000,
+            roughness: 0.4,
+            metalness: 0.2,
+            clearcoat: 0.3,
+            clearcoatRoughness: 0.5,
+            envMapIntensity: 0.8
+        });
         const coneShape = new CANNON.Sphere(0.5);
 
         track.trackPoints.forEach((point, index) => {
@@ -191,6 +229,10 @@ async function init() {
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
+            time += 0.016; // Approximately 60fps
+
+            // Update environment
+            environment.update(time);
 
             // Car movement
             if (input.forward) {
